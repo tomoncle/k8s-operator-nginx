@@ -1,0 +1,73 @@
+apiVersion: devops.github.com/v1
+kind: Nginx
+metadata:
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/instance: nginx-sample
+    app.kubernetes.io/part-of: k8s-operator-nginx
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: k8s-operator-nginx
+  name: nginx-sample
+spec:
+  replicas: 1 # 没有这个属性，不能使用 HorizontalPodAutoscaler
+  image: nginx:stable-alpine
+  healthcheckPath: /healthz
+  resources:
+    limits:
+      cpu: 20m
+      memory: 20Mi
+    requests:
+      cpu: 3m
+      memory: 3Mi
+  config:
+    kind: Inline
+    value: |-
+      events {}
+
+      http {
+          default_type text/plain;
+
+          server {
+              listen 80 default_server;
+
+              location / {
+                  return 302 '/greeting?name=world';
+              }
+
+              location = /greeting {
+                  set $name ${arg_name};
+
+                  if ($name = '') {
+                    set $name 'anonymous';
+                  }
+
+                  return 200 'Hello, ${name}!\n';
+              }
+
+              location = /healthz {
+                  access_log off;
+                  return 200 'WORKING\n';
+              }
+          }
+      }
+  ingress:
+    ingressClassName: nginx
+  tls:
+    - secretName: tomoncle-tls-secret
+      hosts:
+        - dev-01.devops.com
+        - ops-01.devops.com
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: default-auto-scaled-nginx-sample
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 45
+  scaleTargetRef:
+    apiVersion: devops.github.com/v1
+    kind: Nginx
+    name: nginx-sample
