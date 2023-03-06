@@ -67,6 +67,7 @@ $ make uninstall
 
 ## 其他
 
+* https://book.kubebuilder.io/reference/markers.html
 ```
 //+kubebuilder:validation:Required 
 // 用于标记该字段是必填项。

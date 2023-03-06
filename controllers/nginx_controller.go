@@ -50,6 +50,10 @@ const KubeBuilder = `
 ##    ##  #######  ########  ######## ########   #######  #### ######## ########  ######## ##     ##
 `
 
+// 控制器最终会在群集上运行，因此 需要 RBAC 权限，使用控制器工具 RBAC 标记指定这些权限。
+// 这些是运行所需的最低权限。有需要自己再添加。
+// https://book.kubebuilder.io/reference/markers/rbac.html
+
 // +kubebuilder:rbac:groups=devops.github.com,resources=nginxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=devops.github.com,resources=nginxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=devops.github.com,resources=nginxes/finalizers,verbs=update
@@ -185,6 +189,20 @@ func (r *NginxReconciler) listPods(ctx context.Context, obj *devopsV1.Nginx) err
 		}
 	}
 	return nil
+}
+
+func (r *NginxReconciler) listNginx(ctx context.Context) {
+	logger := r.Log.WithName("listNginx")
+	var nginxList devopsV1.NginxList
+	err := r.Client.List(ctx, &nginxList, &client.ListOptions{})
+	if err != nil {
+		logger.Error(err, "查询失败.")
+	} else {
+		logger.Info("查询 Nginx 列表：成功", "count", len(nginxList.Items))
+		for _, nginx := range nginxList.Items {
+			logger.Info("查询 Nginx 列表：成功", "nginx", nginx.Name)
+		}
+	}
 }
 
 func (r *NginxReconciler) refreshStatus(ctx context.Context, obj *devopsV1.Nginx) error {
@@ -464,7 +482,7 @@ func (r *NginxReconciler) reconcileIngress(ctx context.Context, obj *devopsV1.Ng
 func (r *NginxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	//logger := log.FromContext(ctx)
 	r.Log.Info(KubeBuilder)
-
+	r.listNginx(ctx)
 	logger := r.Log.WithName("Reconcile").WithValues("命名空间/名称", req.NamespacedName)
 
 	var instance devopsV1.Nginx
@@ -506,6 +524,8 @@ func (r *NginxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 }
 
 // SetupWithManager sets up the controller with the Manager.
+// owns的一般使用 将 deployment service ingress或者其他资源作为operator应用的子资源，进行生命周期管理
+// 既删除 crd 实例 nginx 时，对应的 deployment service ingress 资源也会删除.
 func (r *NginxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	//return ctrl.NewControllerManagedBy(mgr).
 	//	For(&devopsV1.Nginx{}).
@@ -513,5 +533,8 @@ func (r *NginxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	//	Complete(r)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&devopsV1.Nginx{}).
+		Owns(&appsV1.Deployment{}).
+		Owns(&coreV1.Service{}).
+		Owns(&networkingV1.Ingress{}).
 		Complete(r)
 }
